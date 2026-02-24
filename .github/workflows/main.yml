@@ -1,0 +1,154 @@
+name: ACIA Daily Internship Fetcher
+
+on:
+  schedule:
+    # Runs every day at 8:30 AM UTC (2:00 PM IST)
+    - cron: '30 8 * * *'
+  workflow_dispatch: # Allows manual trigger
+
+jobs:
+  fetch-internships:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v3
+      
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.9'
+        
+    - name: Install dependencies
+      run: |
+        pip install requests beautifulsoup4 lxml python-dotenv
+        
+    - name: Run ACIA fetcher
+      env:
+        BOT_TOKEN: ${{ secrets.BOT_TOKEN }}
+        CHAT_ID: ${{ secrets.CHAT_ID }}
+      run: |
+        python << 'EOF'
+        import requests
+        import os
+        from datetime import datetime
+        
+        # Fetch Stripe internships
+        def fetch_stripe():
+            try:
+                url = "https://boards-api.greenhouse.io/v1/boards/stripe/jobs"
+                response = requests.get(url, timeout=15)
+                jobs = response.json().get('jobs', [])
+                internships = []
+                
+                for job in jobs:
+                    title = job.get('title', '').lower()
+                    if 'intern' in title:
+                        location_info = job.get('location', {})
+                        location = location_info.get('name', 'Not specified')
+                        
+                        internship = {
+                            'company': 'Stripe',
+                            'role': job.get('title', 'Unknown Role'),
+                            'location': location,
+                            'link': job.get('absolute_url', '#'),
+                            'source': 'Greenhouse-Stripe'
+                        }
+                        internships.append(internship)
+                
+                return internships
+            except Exception as e:
+                print(f"Stripe error: {e}")
+                return []
+        
+        # Fetch LinkedIn internships (sample)
+        def fetch_linkedin():
+            return [
+                {
+                    'company': 'Tech Company A',
+                    'role': 'Data Science Intern',
+                    'location': 'Bengaluru',
+                    'link': 'https://linkedin.com/jobs/view/data-science-intern',
+                    'source': 'LinkedIn'
+                },
+                {
+                    'company': 'Tech Company B',
+                    'role': 'Machine Learning Intern',
+                    'location': 'Mumbai',
+                    'link': 'https://linkedin.com/jobs/view/ml-intern',
+                    'source': 'LinkedIn'
+                }
+            ]
+        
+        # Fetch other portals (sample)
+        def fetch_other_portals():
+            return [
+                {
+                    'company': 'Startup X',
+                    'role': 'Data Science Intern',
+                    'location': 'Remote',
+                    'link': 'https://internshala.com/internships/data-science',
+                    'source': 'Internshala'
+                },
+                {
+                    'company': 'Remote Tech Co',
+                    'role': 'Data Science Intern',
+                    'location': 'Remote',
+                    'link': 'https://weworkremotely.com/remote-jobs/search?term=intern',
+                    'source': 'WeWorkRemotely'
+                }
+            ]
+        
+        # Send to Telegram
+        def send_telegram(message):
+            bot_token = os.environ.get('BOT_TOKEN', '7954881918:AAEYS1vOaaG5CInjvTLCzohp0eFizePc8WQ')
+            chat_id = os.environ.get('CHAT_ID', '6317336751')
+            
+            url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
+            data = {
+                'chat_id': chat_id,
+                'text': message,
+                'parse_mode': 'Markdown'
+            }
+            
+            response = requests.post(url, data=data, timeout=15)
+            return response.status_code == 200
+        
+        # Format message
+        def format_internships(internships):
+            if not internships:
+                return "🔍 *No internships found*"
+            
+            message = "🌐 *ACIA Daily Internship Update*\n\n"
+            message += f"📊 *Total internships: {len(internships)}*\n\n"
+            
+            for i, internship in enumerate(internships, 1):
+                message += f"{i}. *{internship['role']}*\n"
+                message += f"🏢 Company: {internship['company']}\n"
+                message += f"📍 Location: {internship['location']}\n"
+                message += f"🔗 [Apply]({internship['link']})\n\n"
+            
+            message += "🤖 *Powered by ACIA*"
+            return message
+        
+        # Main execution
+        print("🚀 Starting ACIA GitHub Actions fetch...")
+        
+        all_internships = []
+        all_internships.extend(fetch_stripe())
+        all_internships.extend(fetch_linkedin())
+        all_internships.extend(fetch_other_portals())
+        
+        if all_internships:
+            message = format_internships(all_internships)
+            success = send_telegram(message)
+            print(f"✅ Sent {len(all_internships)} internships to Telegram: {success}")
+        else:
+            print("❌ No internships found")
+        
+        EOF
+        
+    - name: Log results
+      run: |
+        echo "ACIA fetch completed at $(date)"
+  
